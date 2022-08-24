@@ -22,6 +22,10 @@ npm run migrate
 npm start
 ```
 
+# Usage
+
+You can connect to the sqlite database by running `sqlite3 db.sqlite`.
+
 # Design
 
 We have 4 primary components: `Event`, `Data Source`, `Indexer` and `Database`.
