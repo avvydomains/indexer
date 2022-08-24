@@ -23,15 +23,17 @@ const CHAIN_ID = 43114
 const RPC = RPCS[CHAIN_ID]
 const RPC_URL = RPC.url
 const MAX_BLOCKS = 2048
+const NULL_ADDRESS = '0x0000000000000000000000000000000000000000'
   
 
 class Event {
-  constructor(id, type, blockNumber, blockTimestamp, transactionIndex, args) {
+  constructor(id, type, blockNumber, blockTimestamp, transactionIndex, contractAddress, args) {
     this.id = id
     this.type = type
     this.blockNumber = blockNumber
     this.blockTimestamp = blockTimestamp
     this.transactionIndex = transactionIndex
+    this.contractAddress = contractAddress
     this.args = args
   }
 
@@ -116,7 +118,7 @@ class DB {
       where: {
         hash
       }
-    })
+    }, this.buildOpts())
     if (name) {
       await name.update(params, this.buildOpts())
     } else {
@@ -127,12 +129,122 @@ class DB {
     }
   }
 
+  async upsertStandardEntry(name, hash, key, value, contractAddress) {
+    const entry = await models.StandardEntry.findOne({
+      where: {
+        name,
+        hash,
+        key,
+        contractAddress,
+      }
+    }, this.buildOpts())
+    if (entry) {
+      await entry.update({ value }, this.buildOpts())
+    } else {
+      await models.StandardEntry.create({
+        name,
+        hash,
+        key,
+        value,
+        contractAddress
+      }, this.buildOpts())
+    }
+  }
+
+  async upsertEntry(name, hash, key, value, contractAddress) {
+    const entry = await models.Entry.findOne({
+      where: {
+        name,
+        hash,
+        key,
+        contractAddress,
+      }
+    }, this.buildOpts())
+    if (entry) {
+      await entry.update({ value }, this.buildOpts())
+    } else {
+      await models.Entry.create({
+        name,
+        hash,
+        key,
+        value,
+        contractAddress,
+      }, this.buildOpts())
+    }
+  }
+
+  async upsertResolver(address) {
+    let resolver = await models.Resolver.findOne({
+      where: {
+        address
+      }
+    }, this.buildOpts())
+    if (!resolver) {
+      resolver = await models.Resolver.create({
+        address
+      }, this.buildOpts())
+    }
+    return resolver.id
+  }
+
+  async getResolverAddresses() {
+    const resolvers = await models.Resolver.findAll({}, this.buildOpts())
+    return resolvers.map(resolver => resolver.address)
+  }
+
+  async getResolver(id) {
+    return await models.Resolver.findOne({
+      where: {
+        id
+      }
+    }, this.buildOpts())
+  }
+
+  async getResolverReference(name, hash) {
+    return await models.ResolverReference.findOne({
+      where: {
+        name,
+        hash
+      }
+    }, this.buildOpts())
+  }
+  
+  // Importantly, `resolver` is the return value from the
+  // `upsertResolver` method.
+  async setResolverReference(resolver, name, hash, datasetId) {
+    let reference = await this.getResolverReference(name, hash)
+    if (reference) {
+      await reference.update({
+        resolver,
+        datasetId
+      }, this.buildOpts())
+    } else {
+      await models.ResolverReference.create({
+        name,
+        hash,
+        resolver,
+        datasetId,
+      }, this.buildOpts())
+    }
+    await models.Resolver
+  }
+
+  async deleteResolverReference(name, hash) {
+    await models.ResolverReference.destroy({
+      where: {
+        name,
+        hash
+      }
+    }, this.buildOpts())
+  }
+
   async saveEvent(e) {
     const payload = {
       type: e.type,
       blockNumber: e.blockNumber,
       blockTimestamp: e.blockTimestamp,
       transactionIndex: e.transactionIndex,
+      contractAddress: e.contractAddress,
       args: e.serializeArgs()
     }
     await models.Event.create(payload, this.buildOpts())
@@ -144,7 +256,7 @@ class DB {
         ['blockNumber', 'ASC'],
         ['transactionIndex', 'ASC']
       ]
-    })
+    }, this.buildOpts())
     if (!e) return null
     return new Event(
       e.id,
@@ -152,6 +264,7 @@ class DB {
       e.blockNumber,
       e.blockTimestamp,
       e.transactionIndex,
+      e.contractAddress,
       Event.unserializeArgs(e.args)
     )
   }
@@ -161,7 +274,7 @@ class DB {
       where: {
         id: e.id
       }
-    })
+    }, this.buildOpts())
   }
 }
 
@@ -195,6 +308,38 @@ class Indexer {
     })
   }
 
+  // Executing a ResolverSet event potentially
+  // involves discovering a new Resolver address
+  // which must be monitored for events. This
+  // means we need to also check for events up
+  // to the current block on the address that we
+  // are adding.
+  async executeResolverRegistryResolverSet(e) {
+    if (e.args.resolver === NULL_ADDRESS) {
+      await this.db.deleteResolverReference(e.args.name.toString(), e.args.hash.toString())
+    } else {
+      const resolverAddress = ethers.utils.getAddress(e.args.resolver)
+      const resolver = await this.db.upsertResolver(resolverAddress)
+      await this.db.setResolverReference(resolver, e.args.name.toString(), e.args.hash.toString(), e.args.datasetId.toString())
+      const currentBlock = await this.db.getCurrentBlock() // this is the starting block in the next iteration
+      const fromBlock = e.blockNumber + 1
+      const toBlock = currentBlock - 1 // we want to process up to one block earlier than the next iteration
+      const events = await this.dataSource.getResolverEventsInRange(resolverAddress, fromBlock, toBlock)
+      for (let i = 0; i < events.length; i += 1) {
+        await this.db.saveEvent(events[i])
+      }
+      await this.dataSource.addResolver(resolverAddress)
+    }
+  }
+
+  async executeResolverEntrySet(e) {
+    await this.db.upsertStandardEntry(e.args.name.toString(), e.args.hash.toString(), e.args.key.toString(), e.args.data.toString(), ethers.utils.getAddress(e.contractAddress))
+  }
+
+  async executeResolverStandardEntrySet(e) {
+    await this.db.upsertEntry(e.args.name.toString(), e.args.hash.toString(), e.args.key.toString(), e.args.data.toString(), ethers.utils.getAddress(e.contractAddress))
+  }
+
   async executeEvent(e) {
     switch (e.type) {
       case "Domain.Register":
@@ -208,6 +353,21 @@ class Indexer {
       case "RainbowTable.Reveal":
         await this.executeRainbowTableReveal(e)
         break
+
+      case "ResolverRegistry.ResolverSet":
+        await this.executeResolverRegistryResolverSet(e)
+        break
+
+      case "Resolver.StandardEntrySet":
+        await this.executeResolverStandardEntrySet(e)
+        break
+
+      case "Resolver.EntrySet":
+        await this.executeResolverEntrySet(e)
+        break
+
+      default:
+        throw "Unknown event type: " + e.type
     }
   }
 
@@ -258,6 +418,13 @@ class Indexer {
     return true
   }
 
+  async init() {
+    const addresses = await this.db.getResolverAddresses()
+    for (let i = 0; i < addresses.length; i += 1) {
+      this.dataSource.addResolver(addresses[i])
+    }
+  }
+
   // This is the main loop for the indexer. This
   // method follows the following process:
   //
@@ -274,6 +441,7 @@ class Indexer {
   //    retrieved. Persist these Events to the
   //    database & update the next block.
   async run() {
+    await this.init()
     while (true) {
       await this.executeEvents()
       let currBlock = await this.provider.getBlockNumber()
@@ -297,6 +465,17 @@ class LogDataSource {
     this.provider = provider
     this.avvy = avvy
     this.blockCache = {}
+    this.resolvers = {}
+  }
+
+  addResolver(resolverAddress) {
+    this.resolvers[resolverAddress] = true
+  }
+
+  removeResolver(resolverAddress) {
+    if (this.resolvers[resolverAddress]) {
+      delete this.resolvers[resolverAddress]
+    }
   }
 
   async getBlock(blockNumber) {
@@ -333,14 +512,47 @@ class LogDataSource {
         logs[i].blockNumber,
         block.timestamp,
         logs[i].transactionIndex,
+        params.filter.address,
         params.iface.parseLog(logs[i]).args
       ))
     }
     return results
   }
 
+  // get all resolver events in the block range
+  async getResolverEventsInRange(address, fromBlock, toBlock) {
+    const standardEntries = await this.getEventsByFilter({
+      type: 'Resolver.StandardEntrySet',
+      filter: {
+        topics: [
+          ethers.utils.id('StandardEntrySet(uint256,uint256,uint256[],uint256,string)'),
+        ],
+        address,
+        fromBlock,
+        toBlock,
+      },
+      iface: this.avvy.contracts.PublicResolverV1.interface
+    })
+    const entries = await this.getEventsByFilter({
+      type: 'Resolver.EntrySet',
+      filter: {
+        topics: [
+          ethers.utils.id('EntrySet(uint256,uint256,uint256[],string,string)'),
+        ],
+        address,
+        fromBlock,
+        toBlock,
+      },
+      iface: this.avvy.contracts.PublicResolverV1.interface
+    })
+    return standardEntries.concat(entries)
+  }
+
   // get all events in the block range
   async getEventsInRange(fromBlock, toBlock) {
+    console.log(``)
+    console.log(`FETCHING BLOCK RANGE ${fromBlock} - ${toBlock}`)
+    console.log(``)
     let params = [
       {
         type: 'Domain.Register',
@@ -371,6 +583,16 @@ class LogDataSource {
           address: this.avvy.contracts.RainbowTableV1.address
         },
         iface: this.avvy.contracts.RainbowTableV1.interface
+      },
+      {
+        type: 'ResolverRegistry.ResolverSet',
+        filter: {
+          topics: [
+            ethers.utils.id('ResolverSet(uint256,uint256,uint256[],address,uint256)')
+          ],
+          address: this.avvy.contracts.ResolverRegistryV1.address
+        },
+        iface: this.avvy.contracts.ResolverRegistryV1.interface
       }
     ]
     let events = []
@@ -380,6 +602,12 @@ class LogDataSource {
       param.filter.fromBlock = fromBlock
       param.filter.toBlock = toBlock
       let result = await this.getEventsByFilter(param)
+      events = events.concat(result)
+    }
+
+    let resolverAddresses = Object.keys(this.resolvers)
+    for (let i = 0; i < resolverAddresses.length; i += 1) {
+      let result = await this.getResolverEventsInRange(resolverAddresses[i], fromBlock, toBlock)
       events = events.concat(result)
     }
 

@@ -3,7 +3,7 @@ const {
   Model
 } = require('sequelize');
 module.exports = (sequelize, DataTypes) => {
-  class Event extends Model {
+  class ResolverReference extends Model {
     /**
      * Helper method for defining associations.
      * This method is not a part of Sequelize lifecycle.
@@ -13,16 +13,14 @@ module.exports = (sequelize, DataTypes) => {
       // define association here
     }
   }
-  Event.init({
-    type: DataTypes.STRING,
-    blockNumber: DataTypes.INTEGER,
-    blockTimestamp: DataTypes.INTEGER,
-    transactionIndex: DataTypes.INTEGER,
-    contractAddress: DataTypes.STRING,
-    args: DataTypes.STRING(100000)
+  ResolverReference.init({
+    name: DataTypes.STRING,
+    hash: DataTypes.STRING,
+    resolver: DataTypes.INTEGER,
+    datasetId: DataTypes.STRING
   }, {
     sequelize,
-    modelName: 'Event',
+    modelName: 'ResolverReference',
   });
-  return Event;
+  return ResolverReference;
 };
