@@ -14,14 +14,13 @@ const RPCS = {
   },
   43114: {
     block: 14909991,
-    //url: 'https://api.avax.network/ext/bc/C/rpc'
-    url: 'https://nd-938-215-711.p2pify.com/1007924c86e62685a43d102d0c0b38dd/ext/bc/C/rpc',
+    url: 'https://api.avax.network/ext/bc/C/rpc'
   },
 }
 
-const CHAIN_ID = 43114
+const CHAIN_ID = process.env.CHAIN_ID || 43114
 const RPC = RPCS[CHAIN_ID]
-const RPC_URL = RPC.url
+const RPC_URL = process.env.RPC_URL || RPC.url
 const MAX_BLOCKS = 2048
 const NULL_ADDRESS = '0x0000000000000000000000000000000000000000'
   
