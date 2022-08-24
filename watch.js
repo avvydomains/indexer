@@ -23,7 +23,21 @@ const RPC = RPCS[CHAIN_ID]
 const RPC_URL = process.env.RPC_URL || RPC.url
 const MAX_BLOCKS = 2048
 const NULL_ADDRESS = '0x0000000000000000000000000000000000000000'
-  
+
+
+function msToTime(duration) {
+  var milliseconds = Math.floor((duration % 1000) / 100),
+    seconds = Math.floor((duration / 1000) % 60),
+    minutes = Math.floor((duration / (1000 * 60)) % 60),
+    hours = Math.floor((duration / (1000 * 60 * 60)) % 24);
+
+  hours = (hours < 10) ? "0" + hours : hours;
+  minutes = (minutes < 10) ? "0" + minutes : minutes;
+  seconds = (seconds < 10) ? "0" + seconds : seconds;
+
+  return hours + ":" + minutes + ":" + seconds + "." + milliseconds;
+}
+
 
 class Event {
   constructor(id, type, blockNumber, blockTimestamp, transactionIndex, contractAddress, args) {
@@ -485,19 +499,41 @@ class Indexer {
   //    database & update the next block.
   async run() {
     await this.init()
+
+    let isCatchingUp = true
+    let averageTimeToProcessRange = null
+    let numIterations = 0
+
     while (true) {
+      let loopStart = Date.now()
       await this.executeEvents()
       let currBlock = await this.provider.getBlockNumber()
       let fromBlock = await this.db.getCurrentBlock()
-      let last = false
       if (!fromBlock) fromBlock = RPC.block // this is the first block to parse, if we're starting over
       let toBlock = fromBlock + MAX_BLOCKS
       if (toBlock >= currBlock) {
         toBlock = currBlock
-        last = true
+        isCatchingUp = false
       }
       let events = await this.dataSource.getEventsInRange(fromBlock, toBlock)
       await this.saveEventsAndSetBlock(events, toBlock + 1)
+
+      // estimate time to sync
+      if (isCatchingUp) {
+        let loopLength = Date.now() - loopStart
+        if (averageTimeToProcessRange) {
+          averageTimeToProcessRange -= averageTimeToProcessRange / numIterations
+          averageTimeToProcessRange += loopLength / numIterations
+        } else {
+          averageTimeToProcessRange = loopLength
+        }
+        let remainingIterations = (currBlock - toBlock) / MAX_BLOCKS
+        let timeEstimateMillis = remainingIterations * averageTimeToProcessRange
+        console.log(`
+ Estimated time to sync: ${msToTime(timeEstimateMillis)}
+ `)
+      }
+      numIterations += 1
     }
   }
 }
