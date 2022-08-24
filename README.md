@@ -35,4 +35,3 @@ The `Database` and `Data Source` components can be swapped out for custom compon
 The default `Data Source` fetches event logs from the Avvy Domains contracts.
 
 The default `Database` is a generic NodeJS SQL-ORM which can be connected to various SQL databases.
-- 
