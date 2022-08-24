@@ -237,6 +237,25 @@ class DB {
     }, this.buildOpts())
   }
 
+  async upsertReverseEntry(name, hash, key, target) {
+    let entry = await models.ReverseEntry.findOne({
+      name,
+      hash,
+      key
+    }, this.buildOpts())
+    
+    if (entry) {
+      await entry.update({ target }, this.buildOpts())
+    } else {
+      await models.ReverseEntry.create({
+        name,
+        hash,
+        key,
+        target
+      }, this.buildOpts())
+    }
+  }
+
   async saveEvent(e) {
     const payload = {
       type: e.type,
@@ -322,8 +341,13 @@ class Indexer {
       await this.db.setResolverReference(resolver, e.args.name.toString(), e.args.hash.toString(), e.args.datasetId.toString())
       const currentBlock = await this.db.getCurrentBlock() // this is the starting block in the next iteration
       const fromBlock = e.blockNumber + 1
-      const toBlock = currentBlock - 1 // we want to process up to one block earlier than the next iteration
-      const events = await this.dataSource.getResolverEventsInRange(resolverAddress, fromBlock, toBlock)
+      let toBlock = currentBlock - 1 // we want to process up to one block earlier than the next iteration
+      let events
+      if (toBlock < fromBlock) {
+        events = []
+      } else {
+        events = await this.dataSource.getResolverEventsInRange(resolverAddress, fromBlock, toBlock)
+      }
       for (let i = 0; i < events.length; i += 1) {
         await this.db.saveEvent(events[i])
       }
@@ -337,6 +361,18 @@ class Indexer {
 
   async executeResolverStandardEntrySet(e) {
     await this.db.upsertEntry(e.args.name.toString(), e.args.hash.toString(), e.args.key.toString(), e.args.data.toString(), ethers.utils.getAddress(e.contractAddress))
+  }
+
+  async executeReverseResolverRegistryResolverSet(e) {
+    // we're just going to pass on this for now.
+  }
+
+  async executeReverseResolverEVMEntrySet(e) {
+    let hash = e.args.name
+    for (let i = 0; i < e.args.path.length; i += 2) {
+      hash = await preimageSignal2HashSignal([hash, e.args.path[i], e.args.path[i+1]])
+    }
+    await this.db.upsertReverseEntry(e.args.name.toString(), hash.toString(), 3, e.args.target)
   }
 
   async executeEvent(e) {
@@ -363,6 +399,14 @@ class Indexer {
 
       case "Resolver.EntrySet":
         await this.executeResolverEntrySet(e)
+        break
+
+      case "ReverseResolverRegistry.ResolverSet":
+        await this.executeReverseResolverRegistryResolverSet(e)
+        break
+
+      case "ReverseResolver.EVMEntrySet":
+        await this.executeReverseResolverEVMEntrySet(e)
         break
 
       default:
@@ -453,7 +497,7 @@ class Indexer {
         last = true
       }
       let events = await this.dataSource.getEventsInRange(fromBlock, toBlock)
-      this.saveEventsAndSetBlock(events, toBlock + 1)
+      await this.saveEventsAndSetBlock(events, toBlock + 1)
     }
   }
 }
@@ -592,6 +636,26 @@ class LogDataSource {
           address: this.avvy.contracts.ResolverRegistryV1.address
         },
         iface: this.avvy.contracts.ResolverRegistryV1.interface
+      },
+      {
+        type: 'ReverseResolverRegistry.ResolverSet',
+        filter: {
+          topics: [
+            ethers.utils.id('ResolverSet(uint256,address)')
+          ],
+          address: this.avvy.contracts.ReverseResolverRegistryV1.address
+        },
+        iface: this.avvy.contracts.ReverseResolverRegistryV1.interface
+      },
+      {
+        type: 'ReverseResolver.EVMEntrySet',
+        filter: {
+          topics: [
+            ethers.utils.id('EntrySet(uint256,uint256[],address)')
+          ],
+          address: this.avvy.contracts.EVMReverseResolverV1.address
+        },
+        iface: this.avvy.contracts.EVMReverseResolverV1.interface
       }
     ]
     let events = []
