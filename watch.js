@@ -317,6 +317,7 @@ class Indexer {
     this.avvy = avvy
     this.db = db
     this.dataSource = dataSource
+    this.timeoutWhenCaughtUp = 60
   }
 
   async executeDomainRegistration(e) {
@@ -482,6 +483,12 @@ class Indexer {
     }
   }
 
+  sleep(timeout) {
+    return new Promise((resolve, reject) => {
+      setTimeout(resolve, timeout)
+    })
+  }
+
   // This is the main loop for the indexer. This
   // method follows the following process:
   //
@@ -507,8 +514,12 @@ class Indexer {
     while (true) {
       let loopStart = Date.now()
       await this.executeEvents()
-      let currBlock = await this.provider.getBlockNumber()
       let fromBlock = await this.db.getCurrentBlock()
+      let currBlock = await this.provider.getBlockNumber()
+      while (fromBlock > currBlock) {
+        await this.sleep(this.timeoutWhenCaughtUp)
+        currBlock = await this.provider.getBlockNumber()
+      }
       if (!fromBlock) fromBlock = RPC.block // this is the first block to parse, if we're starting over
       let toBlock = fromBlock + MAX_BLOCKS
       if (toBlock >= currBlock) {
