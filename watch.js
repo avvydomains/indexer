@@ -52,25 +52,39 @@ class Event {
 
   static unserializeArgs(data) {
     let args = JSON.parse(data)
-    for (let prop in args) {
-      if (args[prop]._isBigNumber) {
-        args[prop] = ethers.BigNumber.from(args[prop].data)
+    let unserializeArg = (arg) => {
+      if (Array.isArray(arg)) {
+        let output = arg.map(unserializeArg)
+        return output
+      } else if (arg._isBigNumber) { 
+        return ethers.BigNumber.from(arg.data)
+      } else {
+        return arg
       }
+    }
+    for (let prop in args) {
+      args[prop] = unserializeArg(args[prop])
     }
     return args
   }
 
   serializeArgs() {
     let args = {}
-    for (let prop in this.args) {
-      if (this.args[prop]._isBigNumber) {
-        args[prop] = {
+    let serializeArg = (arg) => {
+      if (Array.isArray(arg)) {
+        return arg.map(serializeArg)
+      } else if (arg._isBigNumber) {
+        return {
           _isBigNumber: true,
-          data: this.args[prop].toString()
+          data: arg.toString()
         }
       } else {
-        args[prop] = this.args[prop]
+        return arg
       }
+    }
+
+    for (let prop in this.args) {
+      args[prop] = serializeArg(this.args[prop])
     }
     return JSON.stringify(args)
   }
@@ -253,9 +267,11 @@ class DB {
 
   async upsertReverseEntry(name, hash, key, target) {
     let entry = await models.ReverseEntry.findOne({
-      name,
-      hash,
-      key
+      where: {
+        name,
+        hash,
+        key
+      }
     }, this.buildOpts())
     
     if (entry) {
@@ -385,7 +401,7 @@ class Indexer {
   async executeReverseResolverEVMEntrySet(e) {
     let hash = e.args.name
     for (let i = 0; i < e.args.path.length; i += 2) {
-      hash = await preimageSignal2HashSignal([hash, e.args.path[i], e.args.path[i+1]])
+      hash = await this.avvy.utils.preimageSignal2HashSignal([hash, e.args.path[i], e.args.path[i+1]])
     }
     await this.db.upsertReverseEntry(e.args.name.toString(), hash.toString(), 3, e.args.target)
   }
