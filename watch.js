@@ -387,11 +387,11 @@ class Indexer {
   }
 
   async executeResolverEntrySet(e) {
-    await this.db.upsertStandardEntry(e.args.name.toString(), e.args.hash.toString(), e.args.key.toString(), e.args.data.toString(), ethers.utils.getAddress(e.contractAddress))
+    await this.db.upsertEntry(e.args.name.toString(), e.args.hash.toString(), e.args.key.toString(), e.args.data.toString(), ethers.utils.getAddress(e.contractAddress))
   }
 
   async executeResolverStandardEntrySet(e) {
-    await this.db.upsertEntry(e.args.name.toString(), e.args.hash.toString(), e.args.key.toString(), e.args.data.toString(), ethers.utils.getAddress(e.contractAddress))
+    await this.db.upsertStandardEntry(e.args.name.toString(), e.args.hash.toString(), e.args.key.toString(), e.args.data.toString(), ethers.utils.getAddress(e.contractAddress))
   }
 
   async executeReverseResolverRegistryResolverSet(e) {
