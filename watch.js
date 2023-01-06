@@ -2,6 +2,7 @@ const ethers = require('ethers')
 const fs = require('fs')
 const { Sequelize, Op } = require('sequelize')
 const models = require('./models/index.js')
+const config = require('./config/index.js')
 
 const RPCS = {
   31337: {
@@ -747,7 +748,7 @@ const main = async () => {
   const provider = new ethers.providers.JsonRpcProvider(RPC_URL)
   const db = new DB()
   await db.init({
-    dialect: 'sqlite',
+    dialect: config.dialect,
   })
   const avvy = new AVVY(provider, {
     chainId: CHAIN_ID

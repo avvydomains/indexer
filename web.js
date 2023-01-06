@@ -4,6 +4,7 @@ const gql = require('graphql')
 const { Sequelize, Op } = require('sequelize')
 const { resolver, attributeFields } = require('graphql-sequelize')
 const models = require('./models/index.js')
+const config = require('./config/index.js')
 
 const DomainType = new gql.GraphQLObjectType({
   name: 'Domain',
@@ -80,7 +81,7 @@ const schema = new gql.GraphQLSchema({
 
 const main = async () => {
   const params = {
-    dialect: 'sqlite'
+    dialect: config.dialect
   }
   const db = new Sequelize(params)
   await db.authenticate()
