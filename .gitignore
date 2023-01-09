@@ -3,5 +3,5 @@ db.sqlite-journal
 *.swp
 *.swo
 env.sh
-config/config.json
+app/config/config.json
 node_modules

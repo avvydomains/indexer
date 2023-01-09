@@ -1,5 +1,5 @@
-const express = require('express')
-const { graphqlHTTP } = require('express-graphql')
+const http = require('http')
+const { createHandler } = require('graphql-http/lib/use/node')
 const gql = require('graphql')
 const { Sequelize, Op } = require('sequelize')
 const { resolver, attributeFields } = require('graphql-sequelize')
@@ -80,19 +80,19 @@ const schema = new gql.GraphQLSchema({
 })
 
 const main = async () => {
-  const params = {
-    dialect: config.dialect
-  }
-  const db = new Sequelize(params)
+  const db = new Sequelize(config)
   await db.authenticate()
 
-  const app = express()
-  app.use('/graphql', graphqlHTTP({
-    schema,
-    graphiql: true
-  }))
+  const handler = createHandler({ schema });
+  const server = http.createServer((req, res) => {
+    if (req.url.startsWith('/graphql')) {
+      handler(req, res);
+    } else {
+      res.writeHead(404).end();
+    }
+  });
 
-  app.listen(4000)
+  server.listen(process.env.WEB_PORT || 4000);
 }
 
 main()
