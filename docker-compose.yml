@@ -2,13 +2,13 @@ version: '3'
 services:
   app:
     build: .
-    volumes:
-      - ./app/config:/app/config
     environment:
-      - RUN_INDEXER=1
-      - RUN_WEB=0
-      - NODE_ENV=production
-      - DEBUG=0
+      RUN_INDEXER: 1
+      RUN_WEB: 0
+      NODE_ENV: production
+      DEBUG: 1
+      CONFIG: >
+        {"production":{"username":"indexer","password":"indexer","database":"indexer","host":"db","port":5432,"dialect":"postgres"}}
     ports:
       - 4000:4000
   db:
