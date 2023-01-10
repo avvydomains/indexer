@@ -748,10 +748,6 @@ const main = async () => {
   const provider = new ethers.providers.JsonRpcProvider(RPC_URL)
   const db = new DB()
   await db.init(config)
-  /*
-    dialect: config.dialect,
-  })
-  */
   const avvy = new AVVY(provider, {
     chainId: CHAIN_ID
   })
