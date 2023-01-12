@@ -18,7 +18,7 @@ module.exports = (sequelize, DataTypes) => {
     name: DataTypes.STRING,
     hash: DataTypes.STRING,
     key: DataTypes.INTEGER,
-    value: DataTypes.STRING
+    value: DataTypes.TEXT
   }, {
     sequelize,
     modelName: 'StandardEntry',

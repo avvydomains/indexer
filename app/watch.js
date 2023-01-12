@@ -97,7 +97,7 @@ class DB {
     this.db = new Sequelize(params)
     await this.db.authenticate()
     this.t = null
-    this.enableTransactions = false
+    this.enableTransactions = params.enableTransactions || false
   }
 
   async startTransaction() {

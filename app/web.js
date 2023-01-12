@@ -56,19 +56,21 @@ const schema = new gql.GraphQLSchema({
   query: new gql.GraphQLObjectType({
     name: 'Query',
     fields: {
-      domainSearch: {
+      domains: {
         type: new gql.GraphQLList(DomainType),
         args: {
           ...defaultArgs,
-          query: { 
+          search: { 
             description: 'Fuzzy-matched domain name',
-            type: new gql.GraphQLNonNull(gql.GraphQLString) 
+            type: gql.GraphQLString
           }
         },
         resolve: customResolver(models.Name, {
           before: (findOptions, args) => {
-            findOptions.where = {
-              name: { [Op.like]: `%${args.query}%` },
+            if (args.search) {
+              findOptions.where = {
+                name: { [Op.like]: `%${args.search}%` },
+              }
             }
             if (!findOptions.order) findOptions.order = [['name', 'ASC']]
             return findOptions

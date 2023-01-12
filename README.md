@@ -39,3 +39,11 @@ The `Database` and `Data Source` components can be swapped out for custom compon
 The default `Data Source` fetches event logs from the Avvy Domains contracts.
 
 The default `Database` is a generic NodeJS SQL-ORM which can be connected to various SQL databases.
+
+# Docker
+
+Check out `docker-compose.yml` for instructions on how to use the provided Dockerfile. Image published as `avvydomains/indexer` on Docker Hub (see https://hub.docker.com/repository/docker/avvydomains/indexer/general).
+
+# Questions
+
+If you have any questions, [get in touch with us](https://avvy.domains/contact). We're happy to help out!
