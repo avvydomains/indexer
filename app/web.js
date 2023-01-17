@@ -1,3 +1,4 @@
+const fs = require('fs')
 const http = require('http')
 const { createHandler } = require('graphql-http/lib/use/node')
 const gql = require('graphql')
@@ -6,18 +7,22 @@ const { resolver, attributeFields } = require('graphql-sequelize')
 const models = require('./models/index.js')
 const config = require('./config/index.js')
 
+const graphiql = fs.readFileSync('graphiql.html', 'utf-8').replace('<% GRAPHQL_URL %>', process.env.GRAPHQL_URL)
+
 const DomainType = new gql.GraphQLObjectType({
   name: 'Domain',
-  fields: attributeFields(models.Name, {
-    only: [
-      'hash', 
-      'name',
-      'expiry',
-      'owner',
-      'createdAt',
-      'updatedAt',
-    ]
-  })
+  fields: {
+    ...attributeFields(models.Name, {
+      only: [
+        'hash', 
+        'name',
+        'expiry',
+        'owner',
+        'createdAt',
+        'updatedAt',
+      ]
+    })
+  }
 })
 
 const MAX_RESULTS = 200
@@ -88,7 +93,12 @@ const main = async () => {
   const handler = createHandler({ schema });
   const server = http.createServer((req, res) => {
     if (req.url.startsWith('/graphql')) {
-      handler(req, res);
+      if (req.method === 'GET') {
+        res.writeHead(200, { 'content-type': 'text/html' })
+        res.end(graphiql, 'utf-8')
+      } else {
+        handler(req, res);
+      }
     } else {
       res.writeHead(404).end();
     }
