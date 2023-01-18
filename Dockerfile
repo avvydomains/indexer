@@ -8,6 +8,7 @@ ENV RUN_INDEXER=0
 ENV RUN_WEB=0
 ENV NODE_ENV=development
 ENV DEBUG=0
+ENV GRAPHQL_URL=0
 ENV CONFIG="not set"
 CMD ["/bin/sh", "/startup.sh"]
 
