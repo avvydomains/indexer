@@ -9,6 +9,79 @@ const config = require('./config/index.js')
 
 const graphiql = fs.readFileSync('graphiql.html', 'utf-8').replace('<% GRAPHQL_URL %>', process.env.GRAPHQL_URL)
 
+const StandardRecordType = new gql.GraphQLObjectType({
+  name: 'StandardRecord',
+  fields: {
+    ...attributeFields(models.StandardEntry, {
+      only: [
+        'key',
+        'value',
+      ]
+    }),
+  }
+})
+
+const CustomRecordType = new gql.GraphQLObjectType({
+  name: 'CustomRecord',
+  fields: {
+    ...attributeFields(models.Entry, {
+      only: [
+        'key',
+        'value',
+      ]
+    }),
+  }
+})
+
+const ResolutionType = new gql.GraphQLObjectType({
+  name: 'Resolution',
+  fields: {
+    resolverAddress: {
+      type: gql.GraphQLString,
+    },
+    name: {
+      type: gql.GraphQLString,
+    },
+    hash: {
+      type: gql.GraphQLString,
+    },
+    standardRecords: {
+      type: new gql.GraphQLList(StandardRecordType),
+      resolve: async (resolver) => {
+        const entries = await models.StandardEntry.findAll({
+          where: {
+            name: resolver.name,
+            hash: resolver.hash,
+            contractAddress: resolver.resolverAddress
+          }
+        })
+        const output = entries.map((entry) => ({
+          key: entry.key,
+          value: entry.value
+        }))
+        return output
+      }
+    },
+    customRecords: {
+      type: new gql.GraphQLList(CustomRecordType),
+      resolve: async (resolver) => {
+        const entries = await models.Entry.findAll({
+          where: {
+            name: resolver.name,
+            hash: resolver.hash,
+            contractAddress: resolver.resolverAddress
+          }
+        })
+        const output = entries.map((entry) => ({
+          key: entry.key,
+          value: entry.value
+        }))
+        return output
+      }
+    }
+  }
+})
+
 const DomainType = new gql.GraphQLObjectType({
   name: 'Domain',
   fields: {
@@ -21,7 +94,34 @@ const DomainType = new gql.GraphQLObjectType({
         'createdAt',
         'updatedAt',
       ]
-    })
+    }),
+    resolution: {
+      type: ResolutionType,
+      resolve: async (name) => {
+        const reference = await models.ResolverReference.findOne({
+          where: {
+            name: name.hash,
+            hash: name.hash
+          }
+        })
+        if (!reference) {
+          return null
+        }
+        const resolver = await models.Resolver.findOne({
+          where: {
+            id: reference.resolver
+          }
+        })
+        if (!resolver) {
+          return null
+        }
+        return {
+          resolverAddress: resolver.address,
+          name: name.hash,
+          hash: name.hash,
+        }
+      }
+    },
   }
 })
 
