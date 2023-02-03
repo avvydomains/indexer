@@ -42,7 +42,7 @@ The default `Database` is a generic NodeJS SQL-ORM which can be connected to var
 
 # Docker
 
-Check out `docker-compose.yml` for instructions on how to use the provided Dockerfile. Image published as `avvydomains/indexer` on Docker Hub (see https://hub.docker.com/repository/docker/avvydomains/indexer/general).
+Check out `docker-compose.yml` for instructions on how to use the provided Dockerfile. Image published as `avvydomains/indexer` on Docker Hub (see https://hub.docker.com/r/avvydomains/indexer).
 
 # Questions
 
