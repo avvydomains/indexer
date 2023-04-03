@@ -28,6 +28,9 @@ const CustomRecordType = new gql.GraphQLObjectType({
       only: [
         'key',
         'value',
+        'name',
+        'hash',
+        'contractAddress',
       ]
     }),
   }
@@ -161,6 +164,26 @@ const schema = new gql.GraphQLSchema({
   query: new gql.GraphQLObjectType({
     name: 'Query',
     fields: {
+      customRecords: {
+        type: new gql.GraphQLList(CustomRecordType),
+        args: {
+          ...defaultArgs,
+          key: {
+            description: 'Exact match key',
+            type: gql.GraphQLString
+          }
+        },
+        resolve: customResolver(models.Entry, {
+          before: (findOptions, args) => {
+            if (args.key) {
+              findOptions.where = {
+                key: args.key
+              }
+            }
+            return findOptions
+          }
+        })
+      },
       domains: {
         type: new gql.GraphQLList(DomainType),
         args: {
@@ -168,15 +191,31 @@ const schema = new gql.GraphQLSchema({
           search: { 
             description: 'Fuzzy-matched domain name',
             type: gql.GraphQLString
+          },
+          hash: {
+            description: 'Hash of domain',
+            type: gql.GraphQLString
           }
         },
         resolve: customResolver(models.Name, {
           before: (findOptions, args) => {
-            if (args.search) {
-              findOptions.where = {
-                name: { [Op.like]: `%${args.search}%` },
-              }
+            const addToWhere = (opts) => {
+              if (!findOptions.where) findOptions.where = {}
+              findOptions.where = Object.assign(findOptions.where, opts)
             }
+
+            if (args.search) {
+              addToWhere({
+                name: { [Op.like]: `%${args.search}%` },
+              })
+            }
+
+            if (args.hash) {
+              addToWhere({
+                hash: args.hash
+              })
+            }
+
             if (!findOptions.order) findOptions.order = [['name', 'ASC']]
             return findOptions
           }
