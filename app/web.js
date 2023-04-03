@@ -1,12 +1,14 @@
 const fs = require('fs')
 const http = require('http')
-const { createHandler } = require('graphql-http/lib/use/node')
+//const { createHandler } = require('graphql-http/lib/use/node')
+const { createHandler } = require('graphql-http')
 const gql = require('graphql')
 const { Sequelize, Op } = require('sequelize')
 const { resolver, attributeFields } = require('graphql-sequelize')
 const models = require('./models/index.js')
 const config = require('./config/index.js')
 
+const isProd = process.env.NODE_ENV === 'production';
 const graphiql = fs.readFileSync('graphiql.html', 'utf-8').replace('<% GRAPHQL_URL %>', process.env.GRAPHQL_URL)
 
 const StandardRecordType = new gql.GraphQLObjectType({
@@ -229,14 +231,66 @@ const main = async () => {
   const db = new Sequelize(config)
   await db.authenticate()
 
-  const handler = createHandler({ schema });
+  const handler = createHandler({ 
+    schema,
+  });
   const server = http.createServer((req, res) => {
+    const headers = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'OPTIONS, POST, GET',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Max-Age': 2592000, // 30 days
+    };
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, headers);
+      res.end();
+      return;
+    }
+
     if (req.url.startsWith('/graphql')) {
       if (req.method === 'GET') {
         res.writeHead(200, { 'content-type': 'text/html' })
         res.end(graphiql, 'utf-8')
+        return
       } else {
-        handler(req, res);
+        handler({
+          url: req.url,
+          method: req.method,
+          headers: req.headers,
+          body: () => {
+            return new Promise((resolve) => {
+              let body = ''
+              req.on('data', chunk => body += chunk)
+              req.on('end', () => {
+                resolve(body)
+              })
+            })
+          },
+          raw: req,
+          context: { res },
+        }).then(([body, init]) => {
+          res.writeHead(init.status, init.statusText, Object.assign(headers, init.headers)).end(body)
+        }).catch(err => {
+          if (isProd) {
+            res.writeHead(500).end();
+          } else {
+            res
+              .writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
+              .end(
+                JSON.stringify({
+                  errors: [
+                    err instanceof Error
+                      ? {
+                          message: err.message,
+                          stack: err.stack,
+                        }
+                      : err,
+                  ],
+                }),
+              );
+          }
+        })
       }
     } else {
       res.writeHead(404).end();
