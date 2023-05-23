@@ -197,7 +197,15 @@ const schema = new gql.GraphQLSchema({
           hash: {
             description: 'Hash of domain',
             type: gql.GraphQLString
-          }
+          },
+          expiryLessThan: {
+            description: 'Filter by domains expiring before (exclusive) the given timestamp',
+            type: gql.GraphQLString
+          },
+          expiryGreaterThan: {
+            description: 'Filter by domains expiring after (exclusive) the given timestamp',
+            type: gql.GraphQLString
+          },
         },
         resolve: customResolver(models.Name, {
           before: (findOptions, args) => {
@@ -215,6 +223,26 @@ const schema = new gql.GraphQLSchema({
             if (args.hash) {
               addToWhere({
                 hash: args.hash
+              })
+            }
+
+            if (args.expiryLessThan !== undefined && args.expiryGreaterThan !== undefined) {
+              addToWhere({
+                expiry: {
+                  [Op.between]: [new Date(Date.parse(args.expiryGreaterThan)), new Date(Date.parse(args.expiryLessThan))]
+                }
+              })
+            } else if (args.expiryLessThan !== undefined) {
+              addToWhere({
+                expiry: {
+                  [Op.lt]: new Date(Date.parse(args.expiryLessThan))
+                }
+              })
+            } else if (args.expiryGreaterThan !== undefined) {
+              addToWhere({
+                expiry: {
+                  [Op.gt]: new Date(Date.parse(args.expiryGreaterThan))
+                }
               })
             }
 
