@@ -1,6 +1,5 @@
 const fs = require('fs')
 const http = require('http')
-//const { createHandler } = require('graphql-http/lib/use/node')
 const { createHandler } = require('graphql-http')
 const gql = require('graphql')
 const { Sequelize, Op } = require('sequelize')
@@ -87,6 +86,50 @@ const ResolutionType = new gql.GraphQLObjectType({
   }
 })
 
+const domainSubdomainSharedFields = {
+  resolution: {
+    type: ResolutionType,
+    resolve: async (name) => {
+      const reference = await models.ResolverReference.findOne({
+        where: {
+          name: name.hash,
+          hash: name.hash
+        }
+      })
+      if (!reference) {
+        return null
+      }
+      const resolver = await models.Resolver.findOne({
+        where: {
+          id: reference.resolver
+        }
+      })
+      if (!resolver) {
+        return null
+      }
+      return {
+        resolverAddress: resolver.address,
+        name: name.hash,
+        hash: name.hash,
+      }
+    }
+  },
+}
+
+const SubDomainType = new gql.GraphQLObjectType({
+  name: 'Subdomain',
+  fields: {
+    ...attributeFields(models.Name, {
+      only: [
+        'hash',
+        'name',
+        
+      ]
+    }),
+    ...domainSubdomainSharedFields
+  }
+})
+
 const DomainType = new gql.GraphQLObjectType({
   name: 'Domain',
   fields: {
@@ -100,33 +143,20 @@ const DomainType = new gql.GraphQLObjectType({
         'updatedAt',
       ]
     }),
-    resolution: {
-      type: ResolutionType,
+    ...domainSubdomainSharedFields,
+    subdomains: {
+      type: new gql.GraphQLList(SubDomainType),
       resolve: async (name) => {
-        const reference = await models.ResolverReference.findOne({
+        const query = `%.${name.name}`
+        return await models.Name.findAll({
           where: {
-            name: name.hash,
-            hash: name.hash
+            name: {
+              [Op.like]: `%.${name.name}`
+            }
           }
         })
-        if (!reference) {
-          return null
-        }
-        const resolver = await models.Resolver.findOne({
-          where: {
-            id: reference.resolver
-          }
-        })
-        if (!resolver) {
-          return null
-        }
-        return {
-          resolverAddress: resolver.address,
-          name: name.hash,
-          hash: name.hash,
-        }
       }
-    },
+    }
   }
 })
 
@@ -143,6 +173,13 @@ const customResolver = (model, resolveArgs) => {
       }
       if (!findOptions.limit) findOptions.limit = MAX_RESULTS
       if (findOptions.limit > MAX_RESULTS) findOptions.limit = MAX_RESULTS
+      if (args.order) {
+        if (args.order.substr(0, 1) === '-') {
+          findOptions.order = [[args.order.substr(1), 'DESC']]
+        } else {
+          findOptions.order = [[args.order, 'ASC']]
+        }
+      }
       return findOptions
     }
   })
@@ -206,6 +243,10 @@ const schema = new gql.GraphQLSchema({
             description: 'Filter by domains expiring after (exclusive) the given timestamp',
             type: gql.GraphQLString
           },
+          nameIsNull: {
+            description: 'Whether to include results where name is null (Enhanced Privacy domains)',
+            type: gql.GraphQLBoolean
+          },
         },
         resolve: customResolver(models.Name, {
           before: (findOptions, args) => {
@@ -246,7 +287,24 @@ const schema = new gql.GraphQLSchema({
               })
             }
 
-            if (!findOptions.order) findOptions.order = [['name', 'ASC']]
+            if (!findOptions.order) {
+              findOptions.order = [['name', 'ASC']]
+            }
+
+            if (args.nameIsNull === true) {
+              addToWhere({
+                name: {
+                  [Op.is]: null
+                }
+              })
+            } else if (args.nameIsNull === false) {
+              addToWhere({
+                name: {
+                  [Op.not]: null
+                }
+              })
+            }
+
             return findOptions
           }
         })
