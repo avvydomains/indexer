@@ -10,6 +10,10 @@ const config = require('./config/index.js')
 const isProd = process.env.NODE_ENV === 'production';
 const graphiql = fs.readFileSync('graphiql.html', 'utf-8').replace('<% GRAPHQL_URL %>', process.env.GRAPHQL_URL)
 
+const ethers = require('ethers')
+
+let avvy
+
 const StandardRecordType = new gql.GraphQLObjectType({
   name: 'StandardRecord',
   fields: {
@@ -181,6 +185,13 @@ const customResolver = (model, resolveArgs) => {
         }
       }
       return findOptions
+    },
+    after: (result, args, context) => {
+      if (resolveArgs.after) {
+        return resolveArgs.after(result, args, context)
+      } else {
+        return result
+      }
     }
   })
 }
@@ -249,15 +260,24 @@ const schema = new gql.GraphQLSchema({
           },
         },
         resolve: customResolver(models.Name, {
-          before: (findOptions, args) => {
+          before: async (findOptions, args) => {
             const addToWhere = (opts) => {
               if (!findOptions.where) findOptions.where = {}
               findOptions.where = Object.assign(findOptions.where, opts)
             }
 
             if (args.search) {
+              let hash = await avvy.utils.nameHash(args.search)
               addToWhere({
-                name: { [Op.like]: `%${args.search}%` },
+                // two conditions
+                [Op.or]: [
+
+                  // exact fuzzy search on name 
+                  { name: { [Op.like]: `%${args.search}%` } },
+
+                  // exact match on hash
+                  { hash: hash.toString() },
+                ]
               })
             }
 
@@ -306,6 +326,26 @@ const schema = new gql.GraphQLSchema({
             }
 
             return findOptions
+          },
+          after: async (result, args, context) => {
+
+            /*
+              // handle the case where we are looking for a single
+              // enhanced-privacy domain. in this case, name will be null..
+              // because it is null in the db. so we just patch in the
+              // value.
+            */
+            if (args.search) {
+              const _hash = await avvy.utils.nameHash(args.search)
+              const hash = _hash.toString()
+              for (let i = 0; i < result.length; i += 1) {
+                if (result[i].hash === hash) {
+                  result[i].name = args.search
+                }
+              }
+            }
+
+            return result
           }
         })
       }
@@ -314,6 +354,15 @@ const schema = new gql.GraphQLSchema({
 })
 
 const main = async () => {
+  const _AVVY = await import('@avvy/client')
+  const AVVY = _AVVY.default
+  const PROVIDER_URL = 'https://api.avax.network/ext/bc/C/rpc'
+  const provider = new ethers.providers.JsonRpcProvider(PROVIDER_URL)
+  avvy = new AVVY(provider, {
+    poseidon: async (args) => {
+      return poseidon.F.toObject(poseidon(args))
+    }
+  })
   const db = new Sequelize(config)
   await db.authenticate()
 
