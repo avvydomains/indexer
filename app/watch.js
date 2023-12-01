@@ -344,6 +344,13 @@ class Indexer {
     })
   }
 
+  async executeDomainRecycle(e) {
+    await this.db.upsertName(e.args.name.toString(), {
+      owner: e.args.registrant,
+      expiry: new Date((e.blockTimestamp + parseInt(e.args.leaseLength.toString())) * 1000)
+    })
+  }
+
   async executeDomainTransfer(e) {
     await this.db.upsertName(e.args.tokenId.toString(), {
       owner: e.args.to
@@ -411,6 +418,10 @@ class Indexer {
     switch (e.type) {
       case "Domain.Register":
         await this.executeDomainRegistration(e)
+        break
+
+      case "Domain.Recycle":
+        await this.executeDomainRecycle(e)
         break
 
       case "Domain.Transfer":
@@ -666,6 +677,16 @@ class LogDataSource {
         filter: { 
           topics: [
             ethers.utils.id('Register(address,address,uint256,uint256)')
+          ], 
+          address: this.avvy.contracts.Domain.address 
+        },
+        iface: this.avvy.contracts.Domain.interface
+      },
+      {
+        type: 'Domain.Recycle',
+        filter: { 
+          topics: [
+            ethers.utils.id('Recycle(address,address,uint256,uint256)')
           ], 
           address: this.avvy.contracts.Domain.address 
         },
