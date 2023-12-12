@@ -171,9 +171,9 @@ const MAX_RESULTS = 200
 const customResolver = (model, resolveArgs) => {
   return resolver(model, {
     ...resolveArgs,
-    before: (findOptions, args) => {
+    before: async (findOptions, args) => {
       if (resolveArgs.before) {
-        findOptions = resolveArgs.before(findOptions, args)
+        findOptions = await resolveArgs.before(findOptions, args)
       }
       if (!findOptions.limit) findOptions.limit = MAX_RESULTS
       if (findOptions.limit > MAX_RESULTS) findOptions.limit = MAX_RESULTS
@@ -224,7 +224,7 @@ const schema = new gql.GraphQLSchema({
           }
         },
         resolve: customResolver(models.Entry, {
-          before: (findOptions, args) => {
+          before: async (findOptions, args) => {
             if (args.key) {
               findOptions.where = {
                 key: args.key
